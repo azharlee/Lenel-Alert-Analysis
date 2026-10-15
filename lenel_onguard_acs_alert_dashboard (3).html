@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lenel OnGuard 8.2 ACS Alert Intelligence Dashboard</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome 6 Free Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- SheetJS & PapaParse for CSV / XLSX file processing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            soc: {
+              950: '#060a12',
+              900: '#0d131f',
+              850: '#111927',
+              800: '#182234',
+              700: '#24324a',
+              border: '#1e2d45',
+            },
+            crimson: {
+              400: '#f87171',
+              500: '#ef4444',
+              600: '#dc2626',
+              glow: 'rgba(239, 68, 68, 0.35)',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b101b; }
+    ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2f4366; }
+
+    /* Tactical Pulsing Glow for Alert #1 Device */
+    @keyframes alert-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .pulse-danger-badge {
+      animation: alert-pulse 2s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+  </style>
+</head>
+<body class="bg-soc-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased selection:bg-crimson-500 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="border-b border-soc-border bg-soc-900/95 sticky top-0 z-40 px-4 sm:px-6 py-3 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Title & Branding -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-crimson-600 to-amber-500 flex items-center justify-center shadow-lg shadow-crimson-950/60 ring-1 ring-white/10 shrink-0">
+          <i class="fa-solid fa-shield-halved text-white text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white uppercase">
+              Lenel OnGuard <span class="text-crimson-400">ACS</span> Intelligence
+            </h1>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 font-bold">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              LIVE SOC
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 font-mono">Lenel 8.2 Daily Alarm & Hardware Frequency Analytics</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button id="btnAutoRefresh" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-soc-800 hover:bg-soc-700 text-slate-200 border border-soc-border transition flex items-center gap-1.5">
+          <i id="refreshIcon" class="fa-solid fa-arrows-rotate text-sky-400 text-xs"></i>
+          <span>Sync Now</span>
+        </button>
+
+        <button id="btnShareDashboard" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-crimson-600 hover:bg-crimson-500 text-white transition flex items-center gap-1.5 shadow-md shadow-crimson-950">
+          <i class="fa-solid fa-share-nodes text-xs"></i>
+          <span>Share Web Link</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- URL CONNECTION & DRAG-AND-DROP BAR -->
+  <section class="bg-soc-850 border-b border-soc-border px-4 sm:px-6 py-2.5 text-xs">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      
+      <!-- Source URL Input Container -->
+      <div class="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <span class="font-mono text-slate-400 font-bold shrink-0 flex items-center gap-1.5">
+          <i class="fa-solid fa-link text-crimson-400"></i> Active Source:
+        </span>
+        <div class="relative flex-1">
+          <input 
+            type="text" 
+            id="urlInputBox" 
+            class="w-full bg-soc-950 border border-soc-border rounded-lg pl-3 pr-8 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-crimson-500 transition" 
+            placeholder="Spreadsheet published CSV link..."
+          />
+        </div>
+        <button id="btnLoadCustomUrl" class="px-3 py-1.5 bg-soc-700 hover:bg-soc-600 text-slate-200 font-semibold rounded-lg shrink-0 border border-soc-border transition">
+          Load URL
+        </button>
+      </div>
+
+      <!-- Quick Upload Alternative -->
+      <div class="flex items-center gap-2 shrink-0 border-t md:border-t-0 md:border-l border-soc-border pt-2 md:pt-0 md:pl-3">
+        <label for="filePicker" class="cursor-pointer text-[11px] font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-soc-800 hover:bg-soc-700 border border-soc-border transition flex items-center gap-1.5">
+          <i class="fa-solid fa-file-arrow-up text-emerald-400"></i>
+          <span>Drop CSV / XLSX</span>
+        </label>
+        <input type="file" id="filePicker" accept=".csv, .xlsx, .xls" class="hidden">
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS DIAGNOSTIC STRIP -->
+  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-3">
+    <div class="bg-soc-900 border border-soc-border rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="syncDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <span class="text-slate-400">Connection:</span>
+        <span id="syncStatusMsg" class="font-mono text-slate-200 font-semibold truncate max-w-sm sm:max-w-md">Connecting to default Google Sheet...</span>
+        <span id="sourceMethodBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">Init</span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="text-slate-400 text-[11px]">Last Sync: <span id="lastSyncLabel" class="font-mono text-slate-200 font-medium">Never</span></span>
+        <span class="text-slate-600">|</span>
+        <span class="font-mono text-slate-300 font-bold" id="totalRowsBadge">0 Records</span>
+      </div>
+    </div>
+
+    <!-- CORS Block Warning Container (Hidden when successful) -->
+    <div id="proxyFailNotice" class="hidden mt-3 p-4 bg-rose-950/70 border border-crimson-500/60 rounded-xl text-xs space-y-2 text-rose-200">
+      <div class="flex items-center justify-between">
+        <span class="font-bold flex items-center gap-2 text-crimson-400 text-sm">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Network / Firewall Block Detected
+        </span>
+        <button id="btnDismissWarning" class="text-rose-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="leading-relaxed">
+        The remote spreadsheet could not be fetched through public CORS proxies (often caused by strict corporate VPNs, proxy inspection, or private organization restrictions).
+      </p>
+      <div class="p-3 bg-soc-950/80 rounded-lg border border-soc-border text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <span><strong>Solution:</strong> In Google Sheets, click <em>File &gt; Download &gt; Comma-separated values (.csv)</em> and drop it directly onto this page.</span>
+        <button onclick="document.getElementById('filePicker').click()" class="px-3 py-1 bg-crimson-600 hover:bg-crimson-500 text-white font-bold rounded shrink-0">
+          Upload Downloaded File
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN DASHBOARD CONTENT -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+
+    <!-- COMPREHENSIVE FILTER STRIP -->
+    <section class="bg-soc-900 border border-soc-border rounded-2xl p-4 sm:p-5 shadow-xl">
+      <div class="flex items-center justify-between pb-3 border-b border-soc-border gap-2">
+        <div class="flex items-center gap-2 font-bold text-xs sm:text-sm text-slate-200 uppercase tracking-wider">
+          <i class="fa-solid fa-sliders text-crimson-400"></i>
+          <span>Multi-Dimensional Incident Filters</span>
+        </div>
+        <button id="btnResetFilters" class="text-[11px] font-semibold text-slate-400 hover:text-crimson-400 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-rotate-left"></i>
+          <span>Reset Filters</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-4 text-xs">
+        <!-- Date From -->
+        <div>
+          <label class="block text-slate-400 text-[11px] font-medium mb-1">From Date:</label>
+          <input type="date" id="filterFromDate" class="w-full bg-soc-950 border border-soc-border text-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-[11px] focus:outline-none focus:border-crimson-500">
+        </div>
+
+        <!-- Date To -->
+        <div>
+          <label class="block text-slate-400 text-[11px] font-medium mb-1">To Date:</label>
+          <input type="date" id="filterToDate" class="w-full bg-soc-950 border border-soc-border text-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-[11px] focus:outline-none focus:border-crimson-500">
+        </div>
+
+        <!-- Shift Filter -->
+        <div>
+          <label class="block text-slate-400 text-[11px] font-medium mb-1">Operational Shift:</label>
+          <select id="filterShift" class="w-full bg-soc-950 border border-soc-border text-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none focus:border-crimson-500">
+            <option value="all">24-Hour (All Shifts)</option>
+            <option value="morning">Morning Shift (06:00 - 14:00)</option>
+            <option value="evening">Evening Shift (14:00 - 22:00)</option>
+            <option value="night">Night Shift (22:00 - 06:00)</option>
+          </select>
+        </div>
+
+        <!-- Event Type Dropdown -->
+        <div>
+          <label class="block text-slate-400 text-[11px] font-medium mb-1">Incident / Alarm Type:</label>
+          <select id="filterAlarmType" class="w-full bg-soc-950 border border-soc-border text-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none focus:border-crimson-500">
+            <option value="all">All Incident Types</option>
+          </select>
+        </div>
+
+        <!-- Device Search Input -->
+        <div>
+          <label class="block text-slate-400 text-[11px] font-medium mb-1">Search Device / Reader:</label>
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-500 text-xs"></i>
+            <input type="text" id="filterDeviceSearch" placeholder="Type name..." class="w-full bg-soc-950 border border-soc-border text-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-[11px] focus:outline-none focus:border-crimson-500">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI SUMMARY GRID (FEATURING HERO #1 HIGHEST ALERT DEVICE) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- HERO CARD: HIGHEST ALERT DEVICE -->
+      <div class="sm:col-span-2 relative overflow-hidden bg-gradient-to-br from-crimson-950/60 via-soc-900 to-soc-900 rounded-2xl border-2 border-crimson-500/70 p-5 shadow-2xl flex flex-col justify-between">
+        <div class="absolute -right-6 -bottom-6 w-36 h-36 bg-crimson-600/15 rounded-full blur-2xl pointer-events-none"></div>
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase bg-crimson-600 text-white pulse-danger-badge shadow-md shadow-crimson-950">
+              <i class="fa-solid fa-fire text-xs"></i>
+              #1 Highest Alert Device
+            </span>
+            <span id="heroAlertShare" class="text-xs font-mono font-bold text-crimson-300 bg-crimson-500/20 border border-crimson-500/30 px-2.5 py-0.5 rounded">
+              0% of total
+            </span>
+          </div>
+
+          <h3 id="heroDeviceName" class="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight break-words line-clamp-2 mt-2">
+            Awaiting Data...
+          </h3>
+          <p id="heroDeviceDetail" class="text-xs text-crimson-200/70 mt-1 font-mono">
+            Hardware requiring priority inspection & recalibration
+          </p>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-crimson-500/30 flex items-baseline justify-between">
+          <span class="text-xs font-medium text-slate-300">Total Device Alarms:</span>
+          <span id="heroDeviceCount" class="text-3xl font-black text-crimson-400 font-mono tracking-tight">0</span>
+        </div>
+      </div>
+
+      <!-- KPI 2: Total Filtered Alerts -->
+      <div class="bg-soc-900 border border-soc-border rounded-2xl p-5 flex flex-col justify-between shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+          <span>Total Incidents</span>
+          <i class="fa-solid fa-bell text-sky-400 text-sm"></i>
+        </div>
+        <div class="mt-2">
+          <p id="kpiTotalEvents" class="text-3xl font-black text-white font-mono">0</p>
+          <p class="text-xs text-slate-400 mt-1 font-mono">Within current filters</p>
+        </div>
+        <div class="mt-3 pt-2 border-t border-soc-border text-[11px] text-slate-400 flex justify-between">
+          <span>Unique Devices:</span>
+          <span id="kpiUniqueDevices" class="font-mono text-slate-200 font-bold">0</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Peak Alarm Signature -->
+      <div class="bg-soc-900 border border-soc-border rounded-2xl p-5 flex flex-col justify-between shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
+          <span>Top Incident Signature</span>
+          <i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm"></i>
+        </div>
+        <div class="mt-2">
+          <p id="kpiDominantAlarm" class="text-base font-bold text-amber-400 truncate">—</p>
+          <p id="kpiDominantCount" class="text-xs text-slate-400 mt-1 font-mono">0 occurrences</p>
+        </div>
+        <div class="mt-3 pt-2 border-t border-soc-border text-[11px] text-slate-400 flex justify-between">
+          <span>Peak Shift:</span>
+          <span id="kpiPeakShift" class="font-semibold text-slate-200">—</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VISUAL CHARTS SECTION -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Primary Horizontal Bar Chart: Devices Ranked with #1 Colored Bright Red -->
+      <div class="lg:col-span-2 bg-soc-900 border border-soc-border rounded-2xl p-5 shadow-xl flex flex-col">
+        <div class="flex flex-wrap items-center justify-between pb-4 border-b border-soc-border gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-chart-bar text-crimson-400"></i>
+              Hardware Alert Frequency Ranking
+            </h3>
+            <p class="text-xs text-slate-400">Top #1 device spotlighted in <span class="text-crimson-400 font-semibold">Alarm Crimson</span>; remaining in muted slate</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] text-slate-400">Display:</span>
+            <select id="chartLimitSelect" class="bg-soc-950 border border-soc-border text-xs rounded px-2.5 py-1 text-slate-200 font-mono">
+              <option value="10">Top 10</option>
+              <option value="20" selected>Top 20</option>
+              <option value="all">All Devices</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="relative flex-1 mt-4 min-h-[380px]">
+          <canvas id="deviceBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Incident Type Breakdown Doughnut Chart -->
+      <div class="bg-soc-900 border border-soc-border rounded-2xl p-5 shadow-xl flex flex-col">
+        <div class="flex items-center justify-between pb-4 border-b border-soc-border">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie text-sky-400"></i>
+            Alarm Distribution Split
+          </h3>
+          <span class="text-[11px] font-mono text-slate-400">Categories</span>
+        </div>
+        <div class="relative flex-1 mt-4 min-h-[300px] flex items-center justify-center">
+          <canvas id="alarmPieChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- INCIDENT TRIAGE LOG TABLE -->
+    <div class="bg-soc-900 border border-soc-border rounded-2xl p-5 shadow-xl">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-soc-border">
+        <div>
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-crimson-400"></i>
+            Hardware Device Alert Log & Triage Rank
+          </h3>
+          <p class="text-xs text-slate-400">Devices sorted from highest to lowest alarm frequency</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnExportCSV" class="px-3 py-1.5 bg-soc-800 hover:bg-soc-700 text-slate-200 text-xs font-semibold rounded-lg border border-soc-border flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-file-csv text-emerald-400"></i>
+            <span>Export Triage CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto mt-4">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="border-b border-soc-border text-slate-400 font-semibold uppercase tracking-wider">
+              <th class="py-3 px-3 w-16 text-center">Rank</th>
+              <th class="py-3 px-3">Device / Hardware Name</th>
+              <th class="py-3 px-3 text-right">Alert Count</th>
+              <th class="py-3 px-3 text-right">% Share</th>
+              <th class="py-3 px-3">Dominant Alarm Signature</th>
+              <th class="py-3 px-3 text-center">Triage Action</th>
+            </tr>
+          </thead>
+          <tbody id="deviceTableBody" class="divide-y divide-soc-border font-mono">
+            <tr>
+              <td colspan="6" class="py-8 text-center text-slate-500 font-sans">
+                Fetching report data...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- POPUP TOAST -->
+  <div id="toastNotification" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-soc-850 border border-soc-border text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
+    <span id="toastMsg">Notification message</span>
+  </div>
+
+  <!-- CORE LOGIC -->
+  <script>
+    // HARDCODED DEFAULT GOOGLE SHEETS PUB CSV LINK
+    const DEFAULT_DATA_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQOsGIoIAdIBbOK4KUjVMV7rF4WU_LwnETBdPhdYN8dV3J9-dxQ6xJkU4X2skG1ln3yQmivk_CzSbwP/pub?output=csv';
+
+    // MULTI-TIER PROXY FALLBACK CASCADE
+    const PROXY_STRATEGIES = [
+      { name: 'Direct', transform: url => url },
+      { name: 'AllOrigins', transform: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+      { name: 'CorsProxy.io', transform: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}` },
+      { name: 'CodeTabs', transform: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` }
+    ];
+
+    // State Variables
+    let rawRecords = [];
+    let filteredRecords = [];
+    let processedDeviceList = [];
+    let currentActiveUrl = '';
+
+    // Field Name Auto-Detection
+    let detectedDeviceKey = '';
+    let detectedEventKey = '';
+    let detectedTimeKey = '';
+
+    // Chart References
+    let barChartInstance = null;
+    let pieChartInstance = null;
+
+    // DOM Elements
+    const urlInputBox = document.getElementById('urlInputBox');
+    const btnLoadCustomUrl = document.getElementById('btnLoadCustomUrl');
+    const btnAutoRefresh = document.getElementById('btnAutoRefresh');
+    const btnShareDashboard = document.getElementById('btnShareDashboard');
+    const filePicker = document.getElementById('filePicker');
+    const syncDot = document.getElementById('syncDot');
+    const syncStatusMsg = document.getElementById('syncStatusMsg');
+    const sourceMethodBadge = document.getElementById('sourceMethodBadge');
+    const lastSyncLabel = document.getElementById('lastSyncLabel');
+    const totalRowsBadge = document.getElementById('totalRowsBadge');
+    const proxyFailNotice = document.getElementById('proxyFailNotice');
+    const btnDismissWarning = document.getElementById('btnDismissWarning');
+
+    // Filter Inputs
+    const filterFromDate = document.getElementById('filterFromDate');
+    const filterToDate = document.getElementById('filterToDate');
+    const filterShift = document.getElementById('filterShift');
+    const filterAlarmType = document.getElementById('filterAlarmType');
+    const filterDeviceSearch = document.getElementById('filterDeviceSearch');
+    const btnResetFilters = document.getElementById('btnResetFilters');
+    const chartLimitSelect = document.getElementById('chartLimitSelect');
+    const btnExportCSV = document.getElementById('btnExportCSV');
+
+    // Startup Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      setupEvents();
+      setupDragAndDrop();
+
+      // Check query parameter ?url=, fallback to DEFAULT_DATA_URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetUrl = urlParams.get('url') || DEFAULT_DATA_URL;
+
+      urlInputBox.value = targetUrl;
+      fetchSpreadsheetData(targetUrl);
+    });
+
+    function setupEvents() {
+      btnLoadCustomUrl.addEventListener('click', () => {
+        const u = urlInputBox.value.trim();
+        if (u) fetchSpreadsheetData(u);
+      });
+
+      btnAutoRefresh.addEventListener('click', () => {
+        const u = currentActiveUrl || urlInputBox.value.trim() || DEFAULT_DATA_URL;
+        fetchSpreadsheetData(u);
+      });
+
+      btnShareDashboard.addEventListener('click', copyShareableLink);
+      btnDismissWarning.addEventListener('click', () => proxyFailNotice.classList.add('hidden'));
+
+      filePicker.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          parseLocalFile(e.target.files[0]);
+        }
+      });
+
+      // Filter change listeners
+      filterFromDate.addEventListener('change', applyActiveFilters);
+      filterToDate.addEventListener('change', applyActiveFilters);
+      filterShift.addEventListener('change', applyActiveFilters);
+      filterAlarmType.addEventListener('change', applyActiveFilters);
+      filterDeviceSearch.addEventListener('input', applyActiveFilters);
+      chartLimitSelect.addEventListener('change', renderBarChart);
+      btnResetFilters.addEventListener('click', resetAllFilters);
+      btnExportCSV.addEventListener('click', exportTriageCSV);
+    }
+
+    // Drag and Drop files anywhere on the window
+    function setupDragAndDrop() {
+      window.addEventListener('dragover', (e) => e.preventDefault());
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          parseLocalFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    // Multi-Strategy Fetch Cascading Loop
+    async function fetchSpreadsheetData(url) {
+      currentActiveUrl = url;
+      const refreshIcon = document.getElementById('refreshIcon');
+      refreshIcon.classList.add('animate-spin');
+      proxyFailNotice.classList.add('hidden');
+
+      syncDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+      syncStatusMsg.textContent = 'Contacting source...';
+
+      let parsedData = null;
+      let usedStrategyName = '';
+
+      // Normalize Google Sheet regular edit URL to public CSV export if user pasted raw link
+      let normalizedUrl = url.trim();
+      if (normalizedUrl.includes('docs.google.com/spreadsheets') && !normalizedUrl.includes('pub?output=csv') && !normalizedUrl.includes('/export?format=csv')) {
+        const match = normalizedUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (match && match[1]) {
+          normalizedUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+        }
+      }
+
+      for (let i = 0; i < PROXY_STRATEGIES.length; i++) {
+        const strategy = PROXY_STRATEGIES[i];
+        const target = strategy.transform(normalizedUrl);
+        sourceMethodBadge.textContent = strategy.name;
+
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 7000);
+
+          const response = await fetch(target, { signal: controller.signal, cache: 'no-cache' });
+          clearTimeout(timeout);
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          const text = await response.text();
+          if (text.includes('<!DOCTYPE html>') && (text.includes('Sign in') || text.includes('accounts.google.com'))) {
+            throw new Error('Google Workspace private login required.');
+          }
+
+          const parseResult = Papa.parse(text, { header: true, skipEmptyLines: true });
+          if (parseResult.data && parseResult.data.length > 0) {
+            parsedData = parseResult.data;
+            usedStrategyName = strategy.name;
+            break;
+          }
+        } catch (err) {
+          // Continue to next strategy in cascade
+        }
+      }
+
+      refreshIcon.classList.remove('animate-spin');
+
+      if (parsedData && parsedData.length > 0) {
+        syncDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        syncStatusMsg.textContent = `Online: ${cleanUrlDisplay(url)}`;
+        sourceMethodBadge.textContent = usedStrategyName;
+        lastSyncLabel.textContent = new Date().toLocaleTimeString();
+        totalRowsBadge.textContent = `${parsedData.length.toLocaleString()} Records`;
+
+        processDataset(parsedData);
+        showToast(`Loaded ${parsedData.length} records via ${usedStrategyName}`);
+      } else {
+        syncDot.className = 'w-2.5 h-2.5 rounded-full bg-crimson-500';
+        syncStatusMsg.textContent = 'Fetch blocked by network/CORS';
+        sourceMethodBadge.textContent = 'Blocked';
+        proxyFailNotice.classList.remove('hidden');
+        showToast('Remote fetch failed. Drag & drop CSV/Excel file instead.', true);
+
+        // Fallback to sample demo so dashboard isn't blank
+        loadDemoDataset();
+      }
+    }
+
+    // Local CSV / Excel File Loader (100% immune to CORS)
+    function parseLocalFile(file) {
+      currentActiveUrl = '';
+      proxyFailNotice.classList.add('hidden');
+      syncDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+      syncStatusMsg.textContent = `Local File: ${file.name}`;
+      sourceMethodBadge.textContent = 'Local Drop';
+      lastSyncLabel.textContent = new Date().toLocaleTimeString();
+
+      const ext = file.name.split('.').pop().toLowerCase();
+
+      if (ext === 'csv') {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (results.data && results.data.length > 0) {
+              totalRowsBadge.textContent = `${results.data.length.toLocaleString()} Records`;
+              processDataset(results.data);
+              showToast(`Imported ${results.data.length} records from ${file.name}`);
+            }
+          }
+        });
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          if (json && json.length > 0) {
+            totalRowsBadge.textContent = `${json.length.toLocaleString()} Records`;
+            processDataset(json);
+            showToast(`Imported ${json.length} records from ${file.name}`);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    // Auto-detect Lenel Column Names
+    function processDataset(data) {
+      rawRecords = data;
+      const headers = Object.keys(data[0] || {});
+
+      detectedDeviceKey = findMatchingColumn(headers, ['hardware name', 'device name', 'device', 'reader name', 'reader', 'source', 'door', 'panel']) || headers[0];
+      detectedEventKey = findMatchingColumn(headers, ['event description', 'alarm description', 'event', 'alarm', 'description', 'message', 'event type']) || (headers[1] || headers[0]);
+      detectedTimeKey = findMatchingColumn(headers, ['date/time', 'timestamp', 'event time', 'date', 'time', 'occurred']) || '';
+
+      populateAlarmTypeFilter();
+      applyActiveFilters();
+    }
+
+    function findMatchingColumn(headers, candidates) {
+      for (const cand of candidates) {
+        for (const h of headers) {
+          const cleanH = h.toLowerCase().trim();
+          if (cleanH === cand || cleanH.includes(cand)) {
+            return h;
+          }
+        }
+      }
+      return null;
+    }
+
+    function populateAlarmTypeFilter() {
+      const uniqueEvents = new Set();
+      let minDate = null;
+      let maxDate = null;
+
+      rawRecords.forEach(r => {
+        if (detectedEventKey && r[detectedEventKey]) {
+          uniqueEvents.add(String(r[detectedEventKey]).trim());
+        }
+        if (detectedTimeKey && r[detectedTimeKey]) {
+          const d = parseDateTime(r[detectedTimeKey]);
+          if (d) {
+            if (!minDate || d < minDate) minDate = d;
+            if (!maxDate || d > maxDate) maxDate = d;
+          }
+        }
+      });
+
+      filterAlarmType.innerHTML = '<option value="all">All Incident Types</option>';
+      Array.from(uniqueEvents).sort().forEach(ev => {
+        const opt = document.createElement('option');
+        opt.value = ev;
+        opt.textContent = ev;
+        filterAlarmType.appendChild(opt);
+      });
+
+      if (minDate && maxDate) {
+        if (!filterFromDate.value) filterFromDate.value = minDate.toISOString().slice(0, 10);
+        if (!filterToDate.value) filterToDate.value = maxDate.toISOString().slice(0, 10);
+      }
+    }
+
+    function parseDateTime(val) {
+      if (!val) return null;
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) return d;
+      return null;
+    }
+
+    // Filter Calculation Engine
+    function applyActiveFilters() {
+      const fromDate = filterFromDate.value ? new Date(filterFromDate.value + 'T00:00:00') : null;
+      const toDate = filterToDate.value ? new Date(filterToDate.value + 'T23:59:59') : null;
+      const selectedShift = filterShift.value;
+      const selectedType = filterAlarmType.value;
+      const searchTerm = filterDeviceSearch.value.trim().toLowerCase();
+
+      filteredRecords = rawRecords.filter(row => {
+        // Event Type
+        if (selectedType !== 'all') {
+          const ev = row[detectedEventKey] ? String(row[detectedEventKey]).trim() : '';
+          if (ev !== selectedType) return false;
+        }
+
+        // Search Term
+        if (searchTerm) {
+          const dev = row[detectedDeviceKey] ? String(row[detectedDeviceKey]).toLowerCase() : '';
+          const ev = row[detectedEventKey] ? String(row[detectedEventKey]).toLowerCase() : '';
+          if (!dev.includes(searchTerm) && !ev.includes(searchTerm)) return false;
+        }
+
+        // Date and Shift
+        if (detectedTimeKey && row[detectedTimeKey]) {
+          const d = parseDateTime(row[detectedTimeKey]);
+          if (d) {
+            if (fromDate && d < fromDate) return false;
+            if (toDate && d > toDate) return false;
+
+            const hour = d.getHours();
+            if (selectedShift === 'morning' && (hour < 6 || hour >= 14)) return false;
+            if (selectedShift === 'evening' && (hour < 14 || hour >= 22)) return false;
+            if (selectedShift === 'night' && (hour >= 6 && hour < 22)) return false;
+          }
+        }
+
+        return true;
+      });
+
+      aggregateDeviceMetrics();
+    }
+
+    function aggregateDeviceMetrics() {
+      const deviceMap = {};
+      const alarmDistribution = {};
+      const shiftCounts = { morning: 0, evening: 0, night: 0 };
+
+      filteredRecords.forEach(r => {
+        const dev = (detectedDeviceKey && r[detectedDeviceKey]) ? String(r[detectedDeviceKey]).trim() : 'Unknown Hardware';
+        const ev = (detectedEventKey && r[detectedEventKey]) ? String(r[detectedEventKey]).trim() : 'Unspecified Alarm';
+
+        if (!deviceMap[dev]) {
+          deviceMap[dev] = { total: 0, alarms: {} };
+        }
+        deviceMap[dev].total += 1;
+        deviceMap[dev].alarms[ev] = (deviceMap[dev].alarms[ev] || 0) + 1;
+
+        alarmDistribution[ev] = (alarmDistribution[ev] || 0) + 1;
+
+        if (detectedTimeKey && r[detectedTimeKey]) {
+          const d = parseDateTime(r[detectedTimeKey]);
+          if (d) {
+            const hr = d.getHours();
+            if (hr >= 6 && hr < 14) shiftCounts.morning++;
+            else if (hr >= 14 && hr < 22) shiftCounts.evening++;
+            else shiftCounts.night++;
+          }
+        }
+      });
+
+      const totalCount = filteredRecords.length;
+
+      processedDeviceList = Object.keys(deviceMap).map(name => {
+        const alarms = deviceMap[name].alarms;
+        let dominantAlarm = '—';
+        let maxCount = -1;
+        for (const [alarmName, count] of Object.entries(alarms)) {
+          if (count > maxCount) {
+            maxCount = count;
+            dominantAlarm = alarmName;
+          }
+        }
+
+        const count = deviceMap[name].total;
+        const pct = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
+
+        return {
+          name,
+          count,
+          pct: parseFloat(pct),
+          dominantAlarm,
+          dominantCount: maxCount
+        };
+      });
+
+      // SORT DESCENDING: Index 0 is the #1 Highest Alert Hardware
+      processedDeviceList.sort((a, b) => b.count - a.count);
+
+      updateKPICards(totalCount, alarmDistribution, shiftCounts);
+      renderBarChart();
+      renderPieChart(alarmDistribution);
+      renderTable();
+    }
+
+    // Update KPI & Hero Card Highlighting
+    function updateKPICards(totalCount, alarmDistribution, shiftCounts) {
+      document.getElementById('kpiTotalEvents').textContent = totalCount.toLocaleString();
+      document.getElementById('kpiUniqueDevices').textContent = processedDeviceList.length.toLocaleString();
+
+      if (processedDeviceList.length > 0) {
+        const topDev = processedDeviceList[0];
+        document.getElementById('heroDeviceName').textContent = topDev.name;
+        document.getElementById('heroDeviceCount').textContent = topDev.count.toLocaleString();
+        document.getElementById('heroAlertShare').textContent = `${topDev.pct}% of total alerts`;
+        document.getElementById('heroDeviceDetail').textContent = `Dominant issue: ${topDev.dominantAlarm} (${topDev.dominantCount} events)`;
+      } else {
+        document.getElementById('heroDeviceName').textContent = 'No Incidents Found';
+        document.getElementById('heroDeviceCount').textContent = '0';
+        document.getElementById('heroAlertShare').textContent = '0%';
+        document.getElementById('heroDeviceDetail').textContent = 'Adjust filter parameters';
+      }
+
+      // Dominant Alarm Category
+      const sortedAlarms = Object.entries(alarmDistribution).sort((a, b) => b[1] - a[1]);
+      if (sortedAlarms.length > 0) {
+        document.getElementById('kpiDominantAlarm').textContent = sortedAlarms[0][0];
+        document.getElementById('kpiDominantCount').textContent = `${sortedAlarms[0][1].toLocaleString()} occurrences`;
+      } else {
+        document.getElementById('kpiDominantAlarm').textContent = '—';
+        document.getElementById('kpiDominantCount').textContent = '0 occurrences';
+      }
+
+      // Peak Shift
+      let peakShiftName = 'Morning';
+      let peakShiftVal = shiftCounts.morning;
+      if (shiftCounts.evening > peakShiftVal) { peakShiftName = 'Evening'; peakShiftVal = shiftCounts.evening; }
+      if (shiftCounts.night > peakShiftVal) { peakShiftName = 'Night'; peakShiftVal = shiftCounts.night; }
+      document.getElementById('kpiPeakShift').textContent = totalCount > 0 ? `${peakShiftName} (${peakShiftVal})` : '—';
+    }
+
+    // RENDER BAR CHART: Top Device (#1) Highlighted in Crimson (#ef4444)
+    function renderBarChart() {
+      const ctx = document.getElementById('deviceBarChart').getContext('2d');
+      const limitSetting = chartLimitSelect.value;
+      const count = limitSetting === 'all' ? processedDeviceList.length : parseInt(limitSetting, 10);
+      const displayData = processedDeviceList.slice(0, count);
+
+      const labels = displayData.map(d => d.name);
+      const dataValues = displayData.map(d => d.count);
+
+      // HIGHLIGHT LOGIC: Index 0 is bright crimson red, other devices are slate
+      const barColors = displayData.map((_, i) => i === 0 ? '#ef4444' : '#24324a');
+      const hoverColors = displayData.map((_, i) => i === 0 ? '#dc2626' : '#334464');
+      const borderColors = displayData.map((_, i) => i === 0 ? '#f87171' : '#182234');
+
+      if (barChartInstance) barChartInstance.destroy();
+
+      barChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataValues,
+            backgroundColor: barColors,
+            hoverBackgroundColor: hoverColors,
+            borderColor: borderColors,
+            borderWidth: 1.5,
+            borderRadius: 6,
+            maxBarThickness: 32
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0d131f',
+              titleColor: '#ffffff',
+              bodyColor: '#cbd5e1',
+              borderColor: '#1e2d45',
+              borderWidth: 1,
+              padding: 10,
+              callbacks: {
+                label: (ctx) => {
+                  const d = displayData[ctx.dataIndex];
+                  return [
+                    ` Alerts: ${d.count.toLocaleString()}`,
+                    ` Share: ${d.pct}%`,
+                    ` Primary Alarm: ${d.dominantAlarm}`
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: '#182234' },
+              ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            y: {
+              grid: { display: false },
+              ticks: {
+                color: (c) => c.index === 0 ? '#f87171' : '#cbd5e1',
+                font: (c) => ({
+                  family: 'Inter',
+                  weight: c.index === 0 ? '700' : '500',
+                  size: 11
+                })
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // RENDER DOUGHNUT PIE CHART
+    function renderPieChart(alarmDistribution) {
+      const ctx = document.getElementById('alarmPieChart').getContext('2d');
+      const sorted = Object.entries(alarmDistribution).sort((a, b) => b[1] - a[1]);
+
+      const top5 = sorted.slice(0, 5);
+      const others = sorted.slice(5);
+
+      const labels = top5.map(i => i[0]);
+      const dataValues = top5.map(i => i[1]);
+
+      if (others.length > 0) {
+        labels.push('Other Events');
+        dataValues.push(others.reduce((a, b) => a + b[1], 0));
+      }
+
+      const palette = ['#ef4444', '#38bdf8', '#fbbf24', '#34d399', '#a855f7', '#64748b'];
+
+      if (pieChartInstance) pieChartInstance.destroy();
+
+      pieChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataValues,
+            backgroundColor: palette.slice(0, labels.length),
+            borderColor: '#060a12',
+            borderWidth: 2,
+            hoverOffset: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: '#cbd5e1',
+                font: { size: 10, family: 'Inter' },
+                boxWidth: 10,
+                padding: 10
+              }
+            }
+          },
+          cutout: '65%'
+        }
+      });
+    }
+
+    // RENDER INCIDENT TRIAGE LOG TABLE
+    function renderTable() {
+      const tbody = document.getElementById('deviceTableBody');
+
+      if (processedDeviceList.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-8 text-center text-slate-500 font-sans">
+              No matching records for the current filter selection.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = processedDeviceList.map((d, index) => {
+        const isRankOne = (index === 0);
+        const rowClass = isRankOne
+          ? 'bg-crimson-500/10 hover:bg-crimson-500/15 border-l-4 border-l-crimson-500 transition'
+          : 'hover:bg-soc-800/40 transition';
+
+        const rankBadge = isRankOne
+          ? `<span class="inline-flex items-center gap-1 font-black text-crimson-400 bg-crimson-500/20 px-2 py-0.5 rounded text-[11px]"><i class="fa-solid fa-crown text-[10px]"></i> #1</span>`
+          : `<span class="text-slate-400 font-mono">#${index + 1}</span>`;
+
+        const actionTag = isRankOne
+          ? `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-crimson-500/25 text-crimson-300 border border-crimson-500/40 uppercase tracking-wider">Critical Focus</span>`
+          : `<span class="px-2 py-0.5 text-[10px] font-medium rounded-full bg-soc-800 text-slate-400 border border-soc-border">Routine</span>`;
+
+        return `
+          <tr class="${rowClass}">
+            <td class="py-3 px-3 text-center">${rankBadge}</td>
+            <td class="py-3 px-3 font-semibold ${isRankOne ? 'text-crimson-200' : 'text-slate-200'} font-sans">
+              ${escapeHtml(d.name)}
+            </td>
+            <td class="py-3 px-3 text-right font-bold font-mono ${isRankOne ? 'text-crimson-400 text-sm' : 'text-slate-300'}">
+              ${d.count.toLocaleString()}
+            </td>
+            <td class="py-3 px-3 text-right font-mono text-slate-400">
+              ${d.pct}%
+            </td>
+            <td class="py-3 px-3 text-slate-300 font-sans text-xs">
+              ${escapeHtml(d.dominantAlarm)}
+            </td>
+            <td class="py-3 px-3 text-center">
+              ${actionTag}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function resetAllFilters() {
+      filterFromDate.value = '';
+      filterToDate.value = '';
+      filterShift.value = 'all';
+      filterAlarmType.value = 'all';
+      filterDeviceSearch.value = '';
+      populateAlarmTypeFilter();
+      applyActiveFilters();
+      showToast('Filters reset to default');
+    }
+
+    // Shareable Dashboard Web Link Generator
+    function copyShareableLink() {
+      const active = currentActiveUrl || urlInputBox.value.trim() || DEFAULT_DATA_URL;
+      const shareUrl = `${window.location.origin}${window.location.pathname}?url=${encodeURIComponent(active)}`;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('Shareable URL copied to clipboard!');
+        }).catch(() => fallbackCopy(shareUrl));
+      } else {
+        fallbackCopy(shareUrl);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const el = document.createElement('input');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast('Shareable URL copied to clipboard!');
+    }
+
+    function exportTriageCSV() {
+      if (processedDeviceList.length === 0) return;
+      const headers = ['Rank', 'Device Name', 'Alert Count', 'Share Percentage', 'Primary Alarm Signature'];
+      const rows = processedDeviceList.map((d, i) => [
+        i + 1,
+        `"${d.name.replace(/"/g, '""')}"`,
+        d.count,
+        `${d.pct}%`,
+        `"${d.dominantAlarm.replace(/"/g, '""')}"`
+      ]);
+
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Lenel_ACS_Alert_Triage_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Triage CSV exported successfully');
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toastNotification');
+      const toastMsg = document.getElementById('toastMsg');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastMsg.textContent = msg;
+      toastIcon.className = isError 
+        ? 'fa-solid fa-circle-exclamation text-crimson-400 text-sm' 
+        : 'fa-solid fa-circle-check text-emerald-400 text-sm';
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 4000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function cleanUrlDisplay(url) {
+      if (url.length > 40) return url.substring(0, 37) + '...';
+      return url;
+    }
+
+    // Built-in Realistic Lenel 8.2 Sample Audit Fallback
+    function loadDemoDataset() {
+      const devices = [
+        'Main Lobby Turnstile 01 [IN]',
+        'Server Room B2 High Security Door',
+        'Loading Dock Roller Shutter Sensor',
+        'Executive Suite 4th Fl Door',
+        'Emergency Stairwell 2 Exit Reader',
+        'Perimeter Gate North Optical Beam',
+        'R&D Cleanroom Airlock Portal',
+        'Visitor Reception Vestibule',
+        'Parking Barrier Inbound Gate',
+        'Warehouse Inventory Bay 4 Door'
+      ];
+
+      const alarms = [
+        'Door Forced Open',
+        'Door Held Open (Too Long)',
+        'Access Denied - Invalid Cardholder Privilege',
+        'Controller Hardware Offline',
+        'Enclosure Tamper Switch Tripped'
+      ];
+
+      const demo = [];
+      const now = new Date();
+
+      for (let i = 0; i < 350; i++) {
+        // Bias heavily toward Server Room B2 so it ranks #1
+        const dev = Math.random() < 0.42 ? 'Server Room B2 High Security Door' : devices[Math.floor(Math.random() * devices.length)];
+        const ev = dev === 'Server Room B2 High Security Door' && Math.random() < 0.7 
+          ? 'Door Forced Open' 
+          : alarms[Math.floor(Math.random() * alarms.length)];
+
+        const offsetHours = Math.floor(Math.random() * 72);
+        const d = new Date(now.getTime() - offsetHours * 3600000);
+
+        demo.push({
+          'Hardware Name': dev,
+          'Event Description': ev,
+          'Date/Time': d.toISOString().replace('T', ' ').substring(0, 19)
+        });
+      }
+
+      processDataset(demo);
+    }
+  </script>
+</body>
+</html>
